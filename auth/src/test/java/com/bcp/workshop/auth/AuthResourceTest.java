@@ -86,7 +86,7 @@ class AuthResourceTest {
     void rejectsInvalidCredentials() {
         given()
                 .contentType("application/json")
-                .body("{\"username\":\"unknown-user\",\"password\":\"incorrect\"}")
+                .body("{\"username\":\"unknown-user\",\"password\":\"incorrect\",\"client\":\"angular-workshop\"}")
                 .when().post("/auth/login")
                 .then()
                 .statusCode(401)
@@ -97,7 +97,7 @@ class AuthResourceTest {
     void rejectsUsernameContainingQuoteAsInvalidCredentials() {
         given()
                 .contentType("application/json")
-                .body("{\"username\":\"unknown-user'\",\"password\":\"incorrect\"}")
+                .body("{\"username\":\"unknown-user'\",\"password\":\"incorrect\",\"client\":\"angular-workshop\"}")
                 .when().post("/auth/login")
                 .then()
                 .statusCode(401);
@@ -148,6 +148,28 @@ class AuthResourceTest {
     }
 
     @Test
+    void rejectsMissingClient() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"student\",\"password\":\"incorrect\"}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(400)
+                .body("message", is("Client is required"));
+    }
+
+    @Test
+    void rejectsBlankClient() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"student\",\"password\":\"incorrect\",\"client\":\"   \"}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(400)
+                .body("message", is("Client is required"));
+    }
+
+    @Test
     void rejectsNullRequest() {
         given()
                 .contentType("application/json")
@@ -162,7 +184,7 @@ class AuthResourceTest {
     void storesSeedPasswordAsHashAfterSuccessfulLogin() throws Exception {
         given()
                 .contentType("application/json")
-                .body("{\"username\":\"student\",\"password\":\"Workshop123!\"}")
+                .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"angular-workshop\"}")
                 .when().post("/auth/login")
                 .then()
                 .statusCode(200);
@@ -240,7 +262,7 @@ class AuthResourceTest {
         String legacyPassword = "FictionalStartup123!";
         given()
                 .contentType("application/json")
-                .body("{\"username\":\"student\",\"password\":\"Workshop123!\"}")
+                .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"angular-workshop\"}")
                 .when().post("/auth/login")
                 .then()
                 .statusCode(200);
@@ -294,13 +316,14 @@ class AuthResourceTest {
         AuthResource resource = new AuthResource();
         resource.authService = new AuthService() {
             @Override
-            public LoginResponse authenticate(String username, String password) {
+            public LoginResponse authenticate(String username, String password, String client) {
                 throw new IllegalStateException("synthetic test failure");
             }
         };
         LoginRequest request = new LoginRequest();
         request.username = "student";
         request.password = "Workshop123!";
+        request.client = "angular-workshop";
 
         Response response = resource.login(request);
 

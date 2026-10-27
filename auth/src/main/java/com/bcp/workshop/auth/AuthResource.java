@@ -32,9 +32,15 @@ public class AuthResource {
         if (isMissing(request.password)) {
             return badRequest("Password is required");
         }
+        if (isMissing(request.client)) {
+            return badRequest("Client is required");
+        }
 
         try {
-            LoginResponse loginResponse = authService.authenticate(request.username, request.password);
+            LoginResponse loginResponse = authService.authenticate(
+                    request.username,
+                    request.password,
+                    request.client);
             if (loginResponse == null) {
                 return Response.status(401)
                         .entity(Map.of("message", "Invalid user " + request.username + " or password"))
