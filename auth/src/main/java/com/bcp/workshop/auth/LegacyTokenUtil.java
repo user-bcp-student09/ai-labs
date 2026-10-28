@@ -37,17 +37,18 @@ public final class LegacyTokenUtil {
 
     private LegacyTokenUtil() {}
 
-    public static String create(String username, String role) {
-        return create(username, role, Instant.now());
+    public static String create(String username, String role, String client) {
+        return create(username, role, client, Instant.now());
     }
 
-    static String create(String username, String role, Instant issuedAt) {
+    static String create(String username, String role, String client, Instant issuedAt) {
         long issuedAtEpochSeconds = issuedAt.getEpochSecond();
         long expiryEpochSeconds = issuedAt.plusSeconds(TOKEN_EXPIRATION_SECONDS).getEpochSecond();
         ObjectNode claims = JSON_MAPPER.createObjectNode()
                 .put("iss", TOKEN_ISSUER)
                 .put("aud", TOKEN_AUDIENCE)
                 .put("sub", username)
+                .put("client", client)
                 .put("role", role)
                 .put("iat", issuedAtEpochSeconds)
                 .put("exp", expiryEpochSeconds);
@@ -94,6 +95,8 @@ public final class LegacyTokenUtil {
                 || !TOKEN_AUDIENCE.equals(claims.path("aud").asText())
                 || !claims.path("sub").isTextual()
                 || claims.path("sub").asText().isBlank()
+                || !claims.path("client").isTextual()
+                || claims.path("client").asText().isBlank()
                 || !claims.path("role").isTextual()
                 || claims.path("role").asText().isBlank()
                 || !claims.path("iat").isIntegralNumber()

@@ -11,7 +11,7 @@ public class AuthService {
     @Inject
     LegacyDatabase database;
 
-    public LoginResponse authenticate(String username, String password) {
+    public LoginResponse authenticate(String username, String password, String client) {
         UserRecord user = database.findByCredentials(username, password);
         if (user == null) {
             return null;
@@ -22,7 +22,7 @@ public class AuthService {
                 StringEscapeUtils.escapeHtml4(user.displayName()),
                 user.role());
         return new LoginResponse(
-                LegacyTokenUtil.create(user.username(), user.role()),
+                LegacyTokenUtil.create(user.username(), user.role(), client),
                 LegacyTokenUtil.TOKEN_EXPIRATION_SECONDS,
                 responseUser,
                 LEGACY_FLOW_MARKER);

@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LegacyTokenUtilTest {
     @Test
     void createsSignedTokenWithExpectedClaimsAndExpiration() {
-        String token = LegacyTokenUtil.create("student", "STUDENT");
+        String token = LegacyTokenUtil.create("student", "STUDENT", "angular-workshop");
         String[] parts = token.split("\\.");
         String header = decode(parts[0]);
         String claims = decode(parts[1]);
@@ -25,6 +25,7 @@ class LegacyTokenUtilTest {
         assertTrue(claims.contains("\"iss\":\"ai-labs-auth\""));
         assertTrue(claims.contains("\"aud\":\"ai-labs-api\""));
         assertTrue(claims.contains("\"sub\":\"student\""));
+        assertTrue(claims.contains("\"client\":\"angular-workshop\""));
         assertTrue(claims.contains("\"role\":\"STUDENT\""));
         assertTrue(claims.contains("\"iat\":"));
         assertTrue(claims.contains("\"exp\":"));
@@ -33,7 +34,7 @@ class LegacyTokenUtilTest {
 
     @Test
     void rejectsAlteredSignature() {
-        String[] parts = LegacyTokenUtil.create("student", "STUDENT").split("\\.");
+        String[] parts = LegacyTokenUtil.create("student", "STUDENT", "angular-workshop").split("\\.");
         char replacement = parts[2].charAt(0) == 'A' ? 'B' : 'A';
         parts[2] = replacement + parts[2].substring(1);
 
@@ -44,7 +45,7 @@ class LegacyTokenUtilTest {
     void rejectsExpiredToken() {
         Instant expiredIssueTime = Instant.now()
                 .minusSeconds(LegacyTokenUtil.TOKEN_EXPIRATION_SECONDS + 1);
-        String token = LegacyTokenUtil.create("student", "STUDENT", expiredIssueTime);
+        String token = LegacyTokenUtil.create("student", "STUDENT", "angular-workshop", expiredIssueTime);
 
         assertFalse(LegacyTokenUtil.isValid(token));
     }
@@ -58,7 +59,7 @@ class LegacyTokenUtilTest {
         assertFalse(LegacyTokenUtil.isValid(createSignedToken("{\"sub\":\"student\"}")));
         assertFalse(LegacyTokenUtil.isValid(createSignedToken(
                 "{\"iss\":\"ai-labs-auth\",\"iss\":\"ai-labs-auth\","
-                        + "\"aud\":\"ai-labs-api\",\"sub\":\"student\","
+                        + "\"aud\":\"ai-labs-api\",\"sub\":\"student\",\"client\":\"angular-workshop\","
                         + "\"role\":\"STUDENT\",\"iat\":1,\"exp\":9999999999}")));
         assertFalse(LegacyTokenUtil.isValid(
                 createSignedToken("{\"exp\":999999999999999999999999999}")));
@@ -75,7 +76,7 @@ class LegacyTokenUtilTest {
                 validClaims("\"ai-labs-auth\"") + " trailing")));
         long futureIssueTime = Instant.now().plusSeconds(60).getEpochSecond();
         assertFalse(LegacyTokenUtil.isValid(createSignedToken(
-                "{\"iss\":\"ai-labs-auth\",\"sub\":\"student\",\"role\":\"STUDENT\","
+                "{\"iss\":\"ai-labs-auth\",\"sub\":\"student\",\"client\":\"angular-workshop\",\"role\":\"STUDENT\","
                         + "\"iat\":" + futureIssueTime + ",\"exp\":"
                         + (futureIssueTime + LegacyTokenUtil.TOKEN_EXPIRATION_SECONDS) + "}")));
     }
@@ -96,7 +97,7 @@ class LegacyTokenUtilTest {
         long issuedAt = Instant.now().getEpochSecond();
         return "{\"iss\":" + issuer
                 + ",\"aud\":" + audience
-                + ",\"sub\":\"student\",\"role\":\"STUDENT\",\"iat\":" + issuedAt
+                + ",\"sub\":\"student\",\"client\":\"angular-workshop\",\"role\":\"STUDENT\",\"iat\":" + issuedAt
                 + ",\"exp\":" + (issuedAt + LegacyTokenUtil.TOKEN_EXPIRATION_SECONDS) + "}";
     }
 
