@@ -4,6 +4,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.apache.commons.text.StringEscapeUtils;
 
+import java.time.Instant;
+
 @ApplicationScoped
 public class AuthService {
     private static final String LEGACY_FLOW_MARKER = "authenticated-with-legacy-flow";
@@ -21,9 +23,13 @@ public class AuthService {
                 user.username(),
                 StringEscapeUtils.escapeHtml4(user.displayName()),
                 user.role());
+        Instant issuedAt = Instant.now();
+        long expiresAtEpochSecond = LegacyTokenUtil.expirationEpochSecond(issuedAt);
+        String token = LegacyTokenUtil.create(user.username(), user.role(), client, issuedAt);
+        long expiresIn = expiresAtEpochSecond - Instant.now().getEpochSecond();
         return new LoginResponse(
-                LegacyTokenUtil.create(user.username(), user.role(), client),
-                LegacyTokenUtil.TOKEN_EXPIRATION_SECONDS,
+                token,
+                expiresIn,
                 responseUser,
                 LEGACY_FLOW_MARKER);
     }
