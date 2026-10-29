@@ -84,7 +84,7 @@
    |---|---|---|---|
    | username | string | Sí | Nombre de usuario. No puede ser nulo ni vacío/espacios. |
    | password | string | Sí | Contraseña. No puede ser nula ni vacía/espacios. |
-   | client | string | No | Campo aceptado por contrato de entrada; no altera la autenticación en el código actual. |
+   | client | string | Sí | Identificador del cliente. No puede ser nulo ni vacío/espacios; se refleja en el claim `client` del token. |
 
    Ejemplo JSON real y completo del request:
    ```json
@@ -103,18 +103,18 @@
    | campo | tipo | descripcion |
    |---|---|---|
    | token | string | JWT firmado (HS256) con claims de identidad y expiración. |
-   | expiresIn | number (long) | Tiempo de expiración en segundos (`3600`). |
+   | expiresIn | number (long) | Segundos restantes hasta el claim `exp` al generar la respuesta. Al recibirla, la diferencia absoluta respecto a `exp - now` no supera 1 segundo. |
    | user | object | Datos del usuario autenticado. |
    | user.username | string | Username del usuario autenticado. |
    | user.displayName | string | Nombre visible del usuario (escapado HTML). |
    | user.role | string | Rol del usuario. |
    | debug | string | Marcador del flujo legado (`authenticated-with-legacy-flow`). |
 
-   Ejemplo JSON real y completo de respuesta exitosa:
+   Ejemplo de forma JSON de respuesta exitosa; el token se representa como valor opaco y `expiresIn` es ilustrativo:
    ```json
    {
-     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhaS1sYWJzLWF1dGgiLCJhdWQiOiJhaS1sYWJzLWFwaSIsInN1YiI6InN0dWRlbnQiLCJyb2xlIjoiU1RVREVOVCIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxNzAwMDAzNjAwfQ.JV6gzhRrO6r8v4jN4Fto3Jm4y2fQ8yXFCb_1oQ4mL7Y",
-     "expiresIn": 3600,
+     "token": "<JWT firmado>",
+     "expiresIn": 3599,
      "user": {
        "username": "student",
        "displayName": "Workshop Student",
@@ -147,6 +147,13 @@
      }
      ```
 
+   - `400 Bad Request`: cuando falta `client` o llega vacío/espacios.
+     ```json
+     {
+       "message": "Client is required"
+     }
+     ```
+
    - `401 Unauthorized`: cuando las credenciales no son válidas.
      ```json
      {
@@ -164,7 +171,8 @@
 6. **Notas de seguridad**
 
    - El token de sesión se firma con `AUTH_TOKEN_SECRET` y expira (claim `exp`).
-   - El secreto no está hardcodeado; debe configurarse por variable de entorno y tener longitud mínima de 32 bytes.
+   - El secreto no está hardcodeado ni tiene valor predeterminado; debe configurarse mediante `AUTH_TOKEN_SECRET` y tener longitud mínima de 32 bytes.
+   - Los valores sintéticos usados en pruebas son exclusivos del laboratorio y no deben usarse en despliegues.
    - El JWT incluye `iss=ai-labs-auth` y `aud=ai-labs-api`; el consumidor debe validar firma, emisor, audiencia y expiración.
    - El origen CORS permitido en `auth` está restringido a `http://localhost:4200`.
    - La persistencia usa SQL parametrizado para autenticación (evita concatenar credenciales).
@@ -179,4 +187,3 @@
    - CORS: `auth/src/main/resources/application.properties:4-5`
    - Consulta parametrizada: `auth/src/main/java/com/bcp/workshop/auth/LegacyDatabase.java:54-57`
    - Pruebas de contrato (200/400/401/500 y CORS): `auth/src/test/java/com/bcp/workshop/auth/AuthResourceTest.java:32-116,251-266`
-

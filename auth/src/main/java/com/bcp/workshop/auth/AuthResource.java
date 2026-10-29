@@ -48,7 +48,7 @@ public class AuthResource {
             }
             return Response.ok(loginResponse).build();
         } catch (Exception error) {
-            LOG.error("Authentication request failed", error);
+            LOG.errorf("Authentication request failed (%s)", error.getClass().getSimpleName());
             return Response.status(500)
                     .entity(Map.of("message", "Internal server error"))
                     .build();

@@ -1,19 +1,30 @@
 package com.bcp.workshop.auth;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.Map;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -24,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @QuarkusTest
 class AuthResourceTest {
     private static final String ALLOWED_CORS_ORIGIN = "http://localhost:4200";
+    private static final JsonMapper JSON_MAPPER = JsonMapper.builder().build();
     private static final String TEST_DATABASE_URL = System.getenv().getOrDefault(
             "AUTH_DB_URL",
             "jdbc:sqlite:./data/workshop.db");
@@ -67,8 +79,8 @@ class AuthResourceTest {
     }
 
     @Test
-    void logsInWithWorkshopUser() {
-        given()
+    void logsInWithWorkshopUser() throws IOException {
+        var response = given()
                 .contentType("application/json")
                 .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"angular-workshop\"}")
                 .when().post("/auth/login")
@@ -78,8 +90,19 @@ class AuthResourceTest {
                 .body("user.displayName", is("Workshop Student"))
                 .body("user.role", is("STUDENT"))
                 .body("token", notNullValue())
-                .body("expiresIn", is(3600))
-                .body("debug", is("authenticated-with-legacy-flow"));
+                .body("debug", is("authenticated-with-legacy-flow"))
+                .extract()
+                .response();
+
+        String token = response.jsonPath().getString("token");
+        long expiresIn = response.jsonPath().getLong("expiresIn");
+        JsonNode claims = tokenClaims(token);
+        long expiresAt = claims.path("exp").longValue();
+        long remainingAtReceipt = expiresAt - Instant.now().getEpochSecond();
+
+        assertEquals("angular-workshop", claims.path("client").asText());
+        assertTrue(Math.abs(expiresIn - remainingAtReceipt) <= 1,
+                "expiresIn must match the token's remaining lifetime within one second");
     }
 
     @Test
@@ -155,7 +178,20 @@ class AuthResourceTest {
                 .when().post("/auth/login")
                 .then()
                 .statusCode(400)
-                .body("message", is("Client is required"));
+                .body("message", is("Client is required"))
+                .body("token", nullValue());
+    }
+
+    @Test
+    void rejectsNullClient() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"student\",\"password\":\"incorrect\",\"client\":null}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(400)
+                .body("message", is("Client is required"))
+                .body("token", nullValue());
     }
 
     @Test
@@ -166,7 +202,8 @@ class AuthResourceTest {
                 .when().post("/auth/login")
                 .then()
                 .statusCode(400)
-                .body("message", is("Client is required"));
+                .body("message", is("Client is required"))
+                .body("token", nullValue());
     }
 
     @Test
@@ -313,11 +350,16 @@ class AuthResourceTest {
 
     @Test
     void returnsGenericInternalServerErrorWithoutExceptionDetails() {
+        String syntheticToken = "test-token-marker";
+        String syntheticSecret = System.getenv("AUTH_TOKEN_SECRET");
+        assertNotNull(syntheticSecret);
+
         AuthResource resource = new AuthResource();
         resource.authService = new AuthService() {
             @Override
             public LoginResponse authenticate(String username, String password, String client) {
-                throw new IllegalStateException("synthetic test failure");
+                throw new IllegalStateException(
+                        "synthetic test failure " + syntheticToken + " " + syntheticSecret);
             }
         };
         LoginRequest request = new LoginRequest();
@@ -325,11 +367,64 @@ class AuthResourceTest {
         request.password = "Workshop123!";
         request.client = "angular-workshop";
 
-        Response response = resource.login(request);
+        StringBuilder capturedLogs = new StringBuilder();
+        Handler logCapture = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                capturedLogs.append(record.getMessage()).append(System.lineSeparator());
+                if (record.getThrown() != null) {
+                    StringWriter stackTrace = new StringWriter();
+                    record.getThrown().printStackTrace(new PrintWriter(stackTrace));
+                    capturedLogs.append(stackTrace);
+                }
+            }
+
+            @Override
+            public void flush() {}
+
+            @Override
+            public void close() {}
+        };
+        Logger logger = Logger.getLogger(AuthResource.class.getName());
+        boolean useParentHandlers = logger.getUseParentHandlers();
+        logger.setUseParentHandlers(false);
+        logger.addHandler(logCapture);
+        String issuedToken;
+        Response response;
+        try {
+            issuedToken = given()
+                    .contentType("application/json")
+                    .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"angular-workshop\"}")
+                    .when().post("/auth/login")
+                    .then()
+                    .statusCode(200)
+                    .extract()
+                    .path("token");
+            given()
+                    .contentType("application/json")
+                    .body("{\"username\":\"unknown-user\",\"password\":\"incorrect\",\"client\":\"angular-workshop\"}")
+                    .when().post("/auth/login")
+                    .then()
+                    .statusCode(401);
+            response = resource.login(request);
+        } finally {
+            logger.removeHandler(logCapture);
+            logger.setUseParentHandlers(useParentHandlers);
+        }
 
         assertEquals(500, response.getStatus());
         Map<?, ?> entity = assertInstanceOf(Map.class, response.getEntity());
         assertEquals("Internal server error", entity.get("message"));
         assertFalse(entity.containsKey("exception"));
+        assertNotNull(issuedToken);
+        assertTrue(capturedLogs.toString().contains("Authentication request failed"));
+        assertFalse(capturedLogs.toString().contains(syntheticToken));
+        assertFalse(capturedLogs.toString().contains(syntheticSecret));
+        assertFalse(capturedLogs.toString().contains(issuedToken));
+    }
+
+    private static JsonNode tokenClaims(String token) throws IOException {
+        String[] tokenParts = token.split("\\.", -1);
+        return JSON_MAPPER.readTree(Base64.getUrlDecoder().decode(tokenParts[1]));
     }
 }

@@ -9,7 +9,9 @@ import java.util.Base64;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LegacyTokenUtilTest {
@@ -49,6 +51,14 @@ class LegacyTokenUtilTest {
 
         assertFalse(LegacyTokenUtil.isValid(token));
     }
+
+        @Test
+        void requiresConfiguredSecretOfAtLeastThirtyTwoBytes() {
+                assertThrows(IllegalStateException.class, () -> LegacyTokenUtil.sign("payload", null));
+                assertThrows(IllegalStateException.class, () -> LegacyTokenUtil.sign("payload", "   "));
+                assertThrows(IllegalStateException.class, () -> LegacyTokenUtil.sign("payload", "s".repeat(31)));
+                assertDoesNotThrow(() -> LegacyTokenUtil.sign("payload", "s".repeat(32)));
+        }
 
     @Test
     void rejectsMalformedTokensAndClaims() throws GeneralSecurityException {

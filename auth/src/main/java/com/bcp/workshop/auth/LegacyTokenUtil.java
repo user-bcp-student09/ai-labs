@@ -43,7 +43,7 @@ public final class LegacyTokenUtil {
 
     static String create(String username, String role, String client, Instant issuedAt) {
         long issuedAtEpochSeconds = issuedAt.getEpochSecond();
-        long expiryEpochSeconds = issuedAt.plusSeconds(TOKEN_EXPIRATION_SECONDS).getEpochSecond();
+        long expiryEpochSeconds = expirationEpochSecond(issuedAt);
         ObjectNode claims = JSON_MAPPER.createObjectNode()
                 .put("iss", TOKEN_ISSUER)
                 .put("aud", TOKEN_AUDIENCE)
@@ -54,6 +54,10 @@ public final class LegacyTokenUtil {
                 .put("exp", expiryEpochSeconds);
         String signingInput = encode(TOKEN_HEADER) + "." + encode(serialize(claims));
         return signingInput + "." + encode(sign(signingInput));
+    }
+
+    static long expirationEpochSecond(Instant issuedAt) {
+        return issuedAt.plusSeconds(TOKEN_EXPIRATION_SECONDS).getEpochSecond();
     }
 
     static boolean isValid(String token) {
@@ -132,6 +136,10 @@ public final class LegacyTokenUtil {
 
     private static byte[] sign(String value) {
         String secret = System.getenv(TOKEN_SECRET_ENVIRONMENT_VARIABLE);
+        return sign(value, secret);
+    }
+
+    static byte[] sign(String value, String secret) {
         if (secret == null || secret.isBlank()) {
             throw new IllegalStateException(
                     TOKEN_SECRET_ENVIRONMENT_VARIABLE + " must be configured");
