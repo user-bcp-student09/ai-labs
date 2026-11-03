@@ -15,7 +15,9 @@ import static org.hamcrest.Matchers.notNullValue;
 
 @QuarkusTest
 class AuthResourceTest {
-    private static final String DB_URL = System.getenv().getOrDefault("AUTH_DB_URL", "jdbc:sqlite:./data/workshop.db");
+    private static final String DB_URL = System.getProperty(
+            "AUTH_DB_URL",
+            System.getenv().getOrDefault("AUTH_DB_URL", "jdbc:sqlite:./data/workshop.db"));
 
     @Test
     void logsInWithWorkshopUser() {
