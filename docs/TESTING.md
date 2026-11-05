@@ -166,6 +166,70 @@ actualizaron porque requieren ampliar el alcance más allá de H-API-05 y del
 plan aprobado. Este resultado queda pendiente, no se presenta como auditoría
 completa limpia.
 
+## Auth — H-AUTH-01 — caracterización de `POST /auth/login`
+
+Se revisó esta guía antes de ampliar pruebas. No había una sección ni casos de
+auth; las secciones existentes de API se conservan sin cambios. Las pruebas
+añadidas en `auth/src/test/java/com/bcp/workshop/auth/AuthResourceTest.java`
+protegen estos comportamientos existentes:
+
+| prueba | requisito o comportamiento protegido |
+|---|---|
+| `logsInWithWorkshopStudentAndReturnsTheExistingSuccessBody` | `student` conserva el `200` y el cuerpo exitoso completo: token, expiración, usuario y `debug`; también conserva el campo opcional `client` del request existente. |
+| `logsInWithWorkshopTrainerAndReturnsTheExistingSuccessBody` | `trainer` conserva el mismo contrato exitoso con su rol y nombre visibles. |
+| `rejectsWrongPasswordWithoutIssuingToken` | Contraseña incorrecta para usuario conocido: `401`, mensaje existente y sin `token`. |
+| `rejectsUnknownUsernameWithoutIssuingToken` | Usuario desconocido: `401`, mensaje existente y sin `token`. |
+| `rejectsBlankUsernameWithTheExistingValidationMessage`, `rejectsMissingUsernameWithTheExistingValidationMessage` | Usuario en blanco o ausente: `400`, `Username is required`. |
+| `rejectsBlankPasswordWithTheExistingValidationMessage`, `rejectsMissingPasswordWithTheExistingValidationMessage` | Contraseña en blanco o ausente: `400`, `Password is required`. |
+| `rejectsMissingBodyWithTheExistingValidationMessage` | Body ausente: `400`, `Request is null`. |
+| `treatsSingleQuoteInUsernameAsOrdinaryInput` | `O'Brien` no es tratado como una cuenta válida: `401` y sin `token`. |
+
+Las pruebas se ejecutaron contra el código de producción sin modificar, desde
+`auth/`. La ejecución inicial de `mvn test` no pudo iniciar Quarkus porque el
+puerto de test `8081` estaba ocupado por el proceso local `mcp-proxy`; no llegó
+a evaluar las assertions. Resultado de la repetición con puerto de test
+asignado por el sistema:
+
+| comando (cwd `auth/`) | resultado |
+|---|---|
+| `$env:QUARKUS_HTTP_TEST_PORT = "0"; mvn test` | **BUILD SUCCESS**; 10 tests, 0 failures, 0 errors, 0 skipped. |
+
+El caso de comilla simple pasa con `401` y sin token. La implementación actual
+imprime el error de sintaxis SQLite que provoca ese valor, pero lo captura y
+mantiene la respuesta esperada; no se modificó producción. No se añadieron en
+esta etapa los casos de inyección del grupo 2, que se reservan para reproducir
+el defecto antes de la corrección funcional.
+
+### H-AUTH-01 — reproducción y corrección (Issue #23)
+
+Pruebas añadidas en `AuthResourceTest`:
+
+| prueba | requisito o comportamiento protegido |
+|---|---|
+| `rejectsInjectionShapedUsernameWithoutIssuingToken` | `' OR '1'='1` como usuario con `Workshop123!` no autentica: `401` y sin `token`. |
+| `rejectsInjectionShapedPasswordWithoutIssuingToken` | `student` con `' OR '1'='1` como contraseña no autentica: `401` y sin `token`. |
+
+Todos los comandos se ejecutaron desde `auth/` con
+`$env:QUARKUS_HTTP_TEST_PORT = "0"` porque el puerto de test `8081` está
+ocupado por un proceso local ajeno (`mcp-proxy`).
+
+| etapa | comando | resultado |
+|---|---|---|
+| Reproducción, antes del fix | `mvn test` | **BUILD FAILURE**; 12 tests, 2 failures: exactamente las dos pruebas de inyección (`Expected status code <401> but was <200>`); las 10 de caracterización pasan. |
+| Después del fix | `mvn test` | **BUILD SUCCESS**; 12 tests, 0 failures, 0 errors. Desaparece el `SQLiteException` del caso `O'Brien`. |
+| Verificación | `mvn verify` | **BUILD SUCCESS**; 12 tests. JaCoCo: `findByCredentials` 10/11 líneas cubiertas (**90,9 %**, meta 85 %); la línea sin cubrir es `printStackTrace` del `catch`, que se conserva sin cambios. |
+| Spec | `openspec validate "parameterize-auth-login-query" --strict` (raíz) | `Change 'parameterize-auth-login-query' is valid`. |
+
+Cambio de producción: solo `LegacyDatabase.findByCredentials`, que usa una
+consulta constante con `?` y `PreparedStatement.setString` para `username` y
+`password`; firma, proyección, resultado `UserRecord`/`null` y manejo de
+errores sin cambios. Los escenarios de `specs/auth-login/spec.md` quedan
+cubiertos así: éxito `student`/`trainer`, contraseña incorrecta, usuario
+desconocido, `O'Brien`, ambas inyecciones y validaciones `400`.
+
+Fuera de alcance y sin cambios: hashing de contraseñas, eco del usuario en el
+mensaje `401`, formato del token y el campo `debug`.
+
 ## Limitaciones
 
 - No se verificó el emisor JWT real ni la configuración de despliegue; auth/ y
