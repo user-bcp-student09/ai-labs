@@ -131,4 +131,26 @@ class AuthResourceTest {
                 .statusCode(401)
                 .body("$", not(hasKey("token")));
     }
+
+    @Test
+    void rejectsInjectionShapedUsernameWithoutIssuingToken() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"' OR '1'='1\",\"password\":\"Workshop123!\"}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(401)
+                .body("$", not(hasKey("token")));
+    }
+
+    @Test
+    void rejectsInjectionShapedPasswordWithoutIssuingToken() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"student\",\"password\":\"' OR '1'='1\"}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(401)
+                .body("$", not(hasKey("token")));
+    }
 }
